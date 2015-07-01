@@ -26,9 +26,12 @@ import android.graphics.drawable.RippleDrawable;
 import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.util.Log;
+import android.util.TypedValue;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.ViewPropertyAnimator;
+import android.view.accessibility.AccessibilityManager;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
@@ -36,6 +39,7 @@ import android.widget.TextView;
 
 import com.android.phone.common.R;
 import com.android.phone.common.animation.AnimUtils;
+import com.android.phone.common.util.SettingsUtil;
 
 import java.util.Locale;
 
@@ -62,6 +66,10 @@ public class DialpadView extends LinearLayout {
     private ImageButton mDelete;
     private View mOverflowMenuButton;
     private ColorStateList mRippleColor;
+
+    private ViewGroup mRateContainer;
+    private TextView mIldCountry;
+    private TextView mIldRate;
 
     private boolean mCanDigitsBeEdited;
 
@@ -104,6 +112,20 @@ public class DialpadView extends LinearLayout {
         mDigits = (EditText) findViewById(R.id.digits);
         mDelete = (ImageButton) findViewById(R.id.deleteButton);
         mOverflowMenuButton = findViewById(R.id.dialpad_overflow);
+        mRateContainer = (ViewGroup) findViewById(R.id.rate_container);
+        mIldCountry = (TextView) mRateContainer.findViewById(R.id.ild_country);
+        mIldRate = (TextView) mRateContainer.findViewById(R.id.ild_rate);
+
+        AccessibilityManager accessibilityManager = (AccessibilityManager)
+                getContext().getSystemService(Context.ACCESSIBILITY_SERVICE);
+        if (accessibilityManager.isEnabled()) {
+            // The text view must be selected to send accessibility events.
+            mDigits.setSelected(true);
+        }
+    }
+
+    public void refreshKeypad() {
+        setupKeypad();
     }
 
     private void setupKeypad() {
@@ -119,16 +141,27 @@ public class DialpadView extends LinearLayout {
                 R.string.dialpad_8_letters, R.string.dialpad_9_letters,
                 R.string.dialpad_star_letters, R.string.dialpad_pound_letters};
 
-        final Resources resources = getContext().getResources();
+        final int[] letter2Ids = new int[] {
+                R.string.dialpad_0_2_letters, R.string.dialpad_1_2_letters,
+                R.string.dialpad_2_2_letters, R.string.dialpad_3_2_letters,
+                R.string.dialpad_4_2_letters, R.string.dialpad_5_2_letters,
+                R.string.dialpad_6_2_letters, R.string.dialpad_7_2_letters,
+                R.string.dialpad_8_2_letters, R.string.dialpad_9_2_letters,
+                R.string.dialpad_star_2_letters, R.string.dialpad_pound_2_letters};
+
+        Locale t9SearchInputLocale = SettingsUtil.getT9SearchInputLocale(getContext());
+        final Resources resources = getResourcesForLocale(t9SearchInputLocale);
 
         DialpadKeyButton dialpadKey;
         TextView numberView;
         TextView lettersView;
+        TextView letters2View;
 
         for (int i = 0; i < mButtonIds.length; i++) {
             dialpadKey = (DialpadKeyButton) findViewById(mButtonIds[i]);
             numberView = (TextView) dialpadKey.findViewById(R.id.dialpad_key_number);
             lettersView = (TextView) dialpadKey.findViewById(R.id.dialpad_key_letters);
+            letters2View = (TextView) dialpadKey.findViewById(R.id.dialpad_key2_letters);
             final String numberString = resources.getString(numberIds[i]);
             final RippleDrawable rippleBackground =
                     (RippleDrawable) getContext().getDrawable(R.drawable.btn_dialpad_key);
@@ -143,6 +176,25 @@ public class DialpadView extends LinearLayout {
 
             if (lettersView != null) {
                 lettersView.setText(resources.getString(letterIds[i]));
+            }
+
+            String secondaryLabel = resources.getString(letter2Ids[i]);
+            if (letters2View != null) {
+                if (!TextUtils.isEmpty(secondaryLabel)) {
+                    letters2View.setText(secondaryLabel);
+                    letters2View.setVisibility(View.VISIBLE);
+
+                    // use smaller text size when both labels are present
+                    if (lettersView != null) {
+                        float size =
+                                resources.getDimension(
+                                        R.dimen.dialpad_key_letters_small_size);
+                        letters2View.setTextSize(TypedValue.COMPLEX_UNIT_PX, size);
+                        lettersView.setTextSize(TypedValue.COMPLEX_UNIT_PX, size);
+                    }
+                } else {
+                    letters2View.setVisibility(View.GONE);
+                }
             }
         }
 
@@ -182,6 +234,16 @@ public class DialpadView extends LinearLayout {
         digits.setCursorVisible(false);
 
         mCanDigitsBeEdited = canBeEdited;
+    }
+
+    public void setCallRateInformation(String countryName, String displayRate) {
+        if (TextUtils.isEmpty(countryName) && TextUtils.isEmpty(displayRate)) {
+            mRateContainer.setVisibility(View.GONE);
+            return;
+        }
+        mRateContainer.setVisibility(View.VISIBLE);
+        mIldCountry.setText(countryName);
+        mIldRate.setText(displayRate);
     }
 
     public boolean canDigitsBeEdited() {
@@ -371,5 +433,13 @@ public class DialpadView extends LinearLayout {
 
         Log.wtf(TAG, "Attempted to get animation duration for invalid key button id.");
         return 0;
+    }
+
+    private Resources getResourcesForLocale(Locale locale) {
+        Configuration defaultConfig = getContext().getResources().getConfiguration();
+        Configuration overrideConfig = new Configuration(defaultConfig);
+        overrideConfig.setLocale(locale);
+        Context localeContext = getContext().createConfigurationContext(overrideConfig);
+        return localeContext.getResources();
     }
 }
